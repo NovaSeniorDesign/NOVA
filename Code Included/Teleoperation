@@ -1,0 +1,84 @@
+import ipywidgets.widgets as widgets
+
+controller = widgets.Controller(index= 0)  # replace with index of your controller
+
+display(controller)
+
+
+
+from jetbot import Robot
+import traitlets
+
+robot = Robot()
+
+left_link = traitlets.dlink((controller.axes[0], 'value'), (robot.left_motor, 'value'), transform=lambda x: -x*0.4)
+right_link = traitlets.dlink((controller.axes[5], 'value'), (robot.right_motor, 'value'), transform=lambda x: -x*0.4)
+
+
+image = widgets.Image(format='jpeg', width=300, height=300)
+
+display(image)
+
+
+from jetbot import Camera
+
+camera = Camera.instance()
+
+
+from jetbot import bgr8_to_jpeg
+
+camera_link = traitlets.dlink((camera, 'value'), (image, 'value'), transform=bgr8_to_jpeg)
+
+
+
+from jetbot import Heartbeat
+
+
+def handle_heartbeat_status(change):
+    if change['new'] == Heartbeat.Status.dead:
+        camera_link.unlink()
+        left_link.unlink()
+        right_link.unlink()
+        robot.stop()
+
+heartbeat = Heartbeat(period=0.5)
+
+# attach the callback function to heartbeat status
+heartbeat.observe(handle_heartbeat_status, names='status')
+
+
+
+# only call this if your robot links were unlinked, otherwise we'll have redundant links which will double
+# the commands transfered
+
+left_link = traitlets.dlink((controller.axes[1], 'value'), (robot.left_motor, 'value'), transform=lambda x: -x*0.4)
+right_link = traitlets.dlink((controller.axes[5], 'value'), (robot.right_motor, 'value'), transform=lambda x: -x*0.4)
+camera_link = traitlets.dlink((camera, 'value'), (image, 'value'), transform=bgr8_to_jpeg)
+
+
+import uuid
+import subprocess
+
+subprocess.call(['mkdir', '-p', 'snapshots'])
+
+snapshot_image = widgets.Image(format='jpeg', width=300, height=300)
+
+def save_snapshot(change):
+    # save snapshot when button is pressed down
+    if change['new']:
+        file_path = 'snapshots/' + str(uuid.uuid1()) + '.jpg'
+        
+        # write snapshot to file (we use image value instead of camera because it's already in JPEG format)
+        with open(file_path, 'wb') as f:
+            f.write(image.value)
+            
+        # display snapshot that was saved
+        snapshot_image.value = image.value
+
+
+controller.buttons[5].observe(save_snapshot, names='value')
+
+display(widgets.HBox([image, snapshot_image]))
+display(controller)
+
+
